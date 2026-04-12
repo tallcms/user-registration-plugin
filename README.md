@@ -22,7 +22,7 @@ TallCMS discovers the plugin automatically — no Composer require or service pr
 
 ## Configuration
 
-The plugin ships with sensible defaults. To override them, create `config/registration.php` in your app root:
+The plugin works out of the box with sensible defaults (no config file needed). To override them, create `config/registration.php` in your app root:
 
 ```php
 return [

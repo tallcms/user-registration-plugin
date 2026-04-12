@@ -11,7 +11,20 @@ class RegistrationServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->mergeConfigFrom(__DIR__.'/../../config/registration.php', 'registration');
+        $defaults = [
+            'enabled' => true,
+            'default_role' => 'author',
+            'redirect_after' => '/admin',
+        ];
+
+        // Merge app-level config/registration.php (if it exists) over defaults
+        $appConfig = config_path('registration.php');
+
+        if (file_exists($appConfig)) {
+            $this->mergeConfigFrom($appConfig, 'registration');
+        }
+
+        config(['registration' => array_merge($defaults, config('registration', []))]);
     }
 
     public function boot(): void
