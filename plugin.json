@@ -1,0 +1,18 @@
+{
+    "name": "Registration",
+    "slug": "registration",
+    "vendor": "tallcms",
+    "version": "1.0.0",
+    "description": "Frontend user registration for TallCMS",
+    "author": "TallCMS",
+    "namespace": "Tallcms\\Registration",
+    "provider": "Tallcms\\Registration\\Providers\\RegistrationServiceProvider",
+    "public_routes": ["/register", "/register/submit", "/registered"],
+    "tags": ["auth", "registration", "free"],
+    "license_required": false,
+    "license": "MIT",
+    "compatibility": {
+        "php": "^8.2",
+        "tallcms": "^1.0"
+    }
+}
