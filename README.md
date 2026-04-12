@@ -12,12 +12,20 @@ Frontend user registration for TallCMS. Adds a themed `/register` page that crea
 
 ## Installation
 
-### Via ZIP Upload (recommended)
+### Via Plugin Package Command (recommended)
 
-1. Download the latest release ZIP from [GitHub Releases](https://github.com/tallcms/user-registration-plugin/releases)
-2. Go to **Admin > System > Plugins**
-3. Click **Upload Plugin** and select the ZIP file
-4. Migrations run automatically — the plugin is ready to use
+If you have the plugin source in your `plugins/` directory (e.g., from cloning the repo):
+
+```bash
+# Package the plugin into a clean ZIP
+php artisan plugin:package registration
+
+# Then upload the ZIP via Admin > System > Plugins
+```
+
+This creates a flat, validator-compliant ZIP — no `.DS_Store`, no nested directories, no development files. Migrations run automatically on install.
+
+> **Note:** GitHub release ZIPs won't work directly because they nest files inside a subdirectory. Always use `plugin:package` or `git archive` to create uploadable ZIPs.
 
 ### Via Manual Copy
 
@@ -29,15 +37,15 @@ php artisan cache:clear
 
 TallCMS discovers the plugin automatically — no Composer require or service provider registration needed.
 
-### Packaging for Distribution
-
-If you're developing or customizing this plugin and need to create a clean ZIP:
+### Via `git archive` (from this repo)
 
 ```bash
-php artisan plugin:package registration
+git clone https://github.com/tallcms/user-registration-plugin.git
+cd user-registration-plugin
+git archive --format=zip HEAD -o registration.zip
 ```
 
-This creates a validator-compliant ZIP excluding `.git`, `.DS_Store`, `tests/`, and other development files. The ZIP can be uploaded directly through the admin panel. See the [CLI Commands Reference](https://tallcms.com/docs/cli-commands) for full options.
+The resulting ZIP can be uploaded through **Admin > System > Plugins**.
 
 ## Configuration
 
