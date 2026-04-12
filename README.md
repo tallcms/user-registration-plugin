@@ -12,13 +12,32 @@ Frontend user registration for TallCMS. Adds a themed `/register` page that crea
 
 ## Installation
 
-Copy (or symlink) this plugin into your TallCMS `plugins/tallcms/registration/` directory and clear the plugin cache:
+### Via ZIP Upload (recommended)
+
+1. Download the latest release ZIP from [GitHub Releases](https://github.com/tallcms/user-registration-plugin/releases)
+2. Go to **Admin > System > Plugins**
+3. Click **Upload Plugin** and select the ZIP file
+4. Migrations run automatically — the plugin is ready to use
+
+### Via Manual Copy
+
+Copy (or symlink) the plugin into your TallCMS `plugins/tallcms/registration/` directory and clear the plugin cache:
 
 ```bash
 php artisan cache:clear
 ```
 
 TallCMS discovers the plugin automatically — no Composer require or service provider registration needed.
+
+### Packaging for Distribution
+
+If you're developing or customizing this plugin and need to create a clean ZIP:
+
+```bash
+php artisan plugin:package registration
+```
+
+This creates a validator-compliant ZIP excluding `.git`, `.DS_Store`, `tests/`, and other development files. The ZIP can be uploaded directly through the admin panel. See the [CLI Commands Reference](https://tallcms.com/docs/cli-commands) for full options.
 
 ## Configuration
 
