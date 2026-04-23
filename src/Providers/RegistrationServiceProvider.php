@@ -13,7 +13,12 @@ class RegistrationServiceProvider extends ServiceProvider
     {
         $defaults = [
             'enabled' => true,
-            'default_role' => 'author',
+            // site_owner is the SaaS-flow role: full management of one's own
+            // sites (pages, posts, menus, media, comments, submissions), scoped
+            // by policy to only the user's own sites. Existing installs that
+            // want the legacy behavior can override to 'author' in
+            // config/registration.php or via REGISTRATION_DEFAULT_ROLE.
+            'default_role' => env('REGISTRATION_DEFAULT_ROLE', 'site_owner'),
             'redirect_after' => '/admin',
         ];
 
