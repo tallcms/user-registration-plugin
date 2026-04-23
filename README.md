@@ -1,6 +1,10 @@
 # Registration Plugin
 
-Frontend user registration for TallCMS. Adds a themed `/register` page that creates users with the `author` role and redirects them to the admin panel.
+Frontend user registration for TallCMS. Adds a themed `/register` page that creates users with the `site_owner` role (or any role you configure) and redirects them to the admin panel.
+
+> **Requires TallCMS ≥ 4.0.15** for the default `site_owner` role.
+> TallCMS 4.0.15 auto-syncs the `site_owner` role during `tallcms:update`.
+> On older installs, run `php artisan tallcms:shield-sync-site-owner` once before enabling registration, or set `REGISTRATION_DEFAULT_ROLE=author` in `.env` to use the legacy role.
 
 ## Features
 
@@ -53,13 +57,31 @@ The plugin works out of the box with sensible defaults (no config file needed). 
 
 ```php
 return [
-    'enabled' => true,           // Toggle registration on/off (404 when false)
-    'default_role' => 'author',  // Spatie role assigned to new users
-    'redirect_after' => '/admin', // Where the success page links to
+    'enabled' => true,                 // Toggle registration on/off (404 when false)
+    'default_role' => 'site_owner',    // Spatie role assigned to new users
+    'redirect_after' => '/admin',      // Where the success page links to
 ];
 ```
 
-The `default_role` must be a role that already exists in your `roles` table. TallCMS seeds `super_admin`, `administrator`, `editor`, and `author` by default. If the configured role doesn't exist, registration will abort safely without creating a user.
+Or via environment:
+
+```env
+REGISTRATION_DEFAULT_ROLE=site_owner
+```
+
+### Available roles
+
+TallCMS seeds these roles by default:
+
+| Role | Intended use |
+| --- | --- |
+| `site_owner` | **SaaS default.** Manages their own site end-to-end: pages, posts, menus, comments, form submissions, media. Records scoped to their own site(s) via policy. |
+| `author` | Legacy. Writes blog posts, submits for review. Does not manage pages, comments, or submissions. |
+| `editor` | Multi-site editorial staff. Pages + posts, submit for review, no approval. |
+| `administrator` | Full content management + approval. |
+| `super_admin` | Full access, bypasses all scoping. |
+
+If the configured role doesn't exist, registration will abort safely without creating a user.
 
 ## Routes
 
@@ -87,18 +109,21 @@ This plugin handles **user creation only**. It does not manage email verificatio
 After registration, users access the admin panel at `/admin`. Whether they can get in depends on TallCMS's `User::canAccessPanel()` method, which checks two things:
 
 1. **`is_active`** — the user must be active (the plugin sets this to `true` on creation)
-2. **Has at least one role** — the plugin assigns the configured role (default: `author`)
+2. **Has at least one role** — the plugin assigns the configured role (default: `site_owner`)
 
 So out of the box, newly registered users can access the panel immediately.
 
 ### What new users can do
 
-The `author` role grants:
+The `site_owner` role grants full management of their own site:
 
-- Create and edit pages and posts (no delete)
-- View categories and menus (read-only)
-- Upload and manage media
-- View contact form submissions
+- Create, edit, and delete pages and posts (with publishing workflow + revisions + preview)
+- Manage categories, menus, media
+- Moderate comments (approve / reject / mark as spam)
+- View and manage contact form submissions
+- Access the Template Gallery to spin up new sites
+
+All records are scoped to the user's own site(s) via `ChecksSiteOwnership` policy layer — a site_owner cannot see or act on another site's records.
 
 To give new users more or fewer permissions, either change `default_role` in the config or adjust the role's permissions via Filament Shield.
 
