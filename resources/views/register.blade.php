@@ -105,7 +105,7 @@
 
             <p class="text-center text-sm text-base-content/70">
                 Already have an account?
-                <a href="{{ url('/admin/login') }}" class="link link-primary">Sign in</a>
+                <a href="{{ $login_url }}" class="link link-primary">Sign in</a>
             </p>
         </div>
     </div>

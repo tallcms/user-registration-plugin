@@ -19,7 +19,9 @@ class RegistrationServiceProvider extends ServiceProvider
             // want the legacy behavior can override to 'author' in
             // config/registration.php or via REGISTRATION_DEFAULT_ROLE.
             'default_role' => env('REGISTRATION_DEFAULT_ROLE', 'site_owner'),
-            'redirect_after' => '/admin',
+            // null = resolve from Filament's default panel at runtime.
+            // Override with a string to force a specific URL.
+            'redirect_after' => env('REGISTRATION_REDIRECT_AFTER'),
         ];
 
         // Merge app-level config/registration.php (if it exists) over defaults

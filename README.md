@@ -59,7 +59,7 @@ The plugin works out of the box with sensible defaults (no config file needed). 
 return [
     'enabled' => true,                 // Toggle registration on/off (404 when false)
     'default_role' => 'site_owner',    // Spatie role assigned to new users
-    'redirect_after' => '/admin',      // Where the success page links to
+    'redirect_after' => null,          // null = auto-detect from Filament's default panel; set a string to force
 ];
 ```
 
@@ -67,7 +67,10 @@ Or via environment:
 
 ```env
 REGISTRATION_DEFAULT_ROLE=site_owner
+REGISTRATION_REDIRECT_AFTER=/dashboard
 ```
+
+`redirect_after` defaults to the URL of Filament's default panel (so it works whether the panel is mounted at `/admin`, `/control`, or anything else). Set it explicitly only if you want to override that.
 
 ### Available roles
 

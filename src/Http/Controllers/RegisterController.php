@@ -3,6 +3,7 @@
 namespace Tallcms\Registration\Http\Controllers;
 
 use App\Models\User;
+use Filament\Facades\Filament;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -22,10 +23,12 @@ class RegisterController extends Controller
         }
 
         if (Auth::check()) {
-            return redirect(config('registration.redirect_after', '/admin'));
+            return redirect($this->redirectUrl());
         }
 
-        return view('tallcms-registration::register');
+        return view('tallcms-registration::register', [
+            'login_url' => $this->loginUrl(),
+        ]);
     }
 
     public function register(Request $request): RedirectResponse
@@ -35,7 +38,7 @@ class RegisterController extends Controller
         }
 
         if (Auth::check()) {
-            return redirect(config('registration.redirect_after', '/admin'));
+            return redirect($this->redirectUrl());
         }
 
         // Honeypot — check before validation, return fake success
@@ -92,11 +95,41 @@ class RegisterController extends Controller
     public function registered(Request $request): View|RedirectResponse
     {
         if (! Auth::check()) {
-            return redirect(config('registration.redirect_after', '/admin'));
+            return redirect($this->redirectUrl());
         }
 
         return view('tallcms-registration::registered', [
-            'redirect_url' => config('registration.redirect_after', '/admin'),
+            'redirect_url' => $this->redirectUrl(),
         ]);
+    }
+
+    protected function redirectUrl(): string
+    {
+        if ($configured = config('registration.redirect_after')) {
+            return $configured;
+        }
+
+        if (class_exists(Filament::class)) {
+            try {
+                return Filament::getDefaultPanel()->getUrl();
+            } catch (\Throwable $e) {
+                // fall through
+            }
+        }
+
+        return url('/admin');
+    }
+
+    protected function loginUrl(): string
+    {
+        if (class_exists(Filament::class)) {
+            try {
+                return Filament::getDefaultPanel()->getLoginUrl();
+            } catch (\Throwable $e) {
+                // fall through
+            }
+        }
+
+        return url('/admin/login');
     }
 }
