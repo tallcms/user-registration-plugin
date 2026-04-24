@@ -11,6 +11,7 @@ use Tallcms\Registration\Captcha\CaptchaManager;
 use Tallcms\Registration\Captcha\Contracts\CaptchaProvider;
 use Tallcms\Registration\Console\Commands\BackfillVerifiedUsers;
 use Tallcms\Registration\Listeners\AssignDefaultSitePlan;
+use Tallcms\Registration\Services\SettingsRepository;
 
 class RegistrationServiceProvider extends ServiceProvider
 {
@@ -54,6 +55,7 @@ class RegistrationServiceProvider extends ServiceProvider
 
         config(['registration' => array_replace_recursive($defaults, config('registration', []))]);
 
+        $this->app->singleton(SettingsRepository::class);
         $this->app->singleton(CaptchaManager::class);
 
         $this->app->singleton(CaptchaProvider::class, fn ($app) => $app->make(CaptchaManager::class)->resolve());
@@ -62,6 +64,11 @@ class RegistrationServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadViewsFrom(__DIR__.'/../../resources/views', 'tallcms-registration');
+        $this->loadMigrationsFrom(__DIR__.'/../../database/migrations');
+
+        // DB-stored settings (managed via Filament UI) take precedence over
+        // env / config defaults. Secrets stay env-only — see SettingsRepository.
+        $this->mergeDbSettingsIntoConfig();
 
         if (class_exists(\Tallcms\Multisite\Services\SitePlanService::class)) {
             Event::listen(Registered::class, AssignDefaultSitePlan::class);
@@ -80,6 +87,32 @@ class RegistrationServiceProvider extends ServiceProvider
             $this->commands([
                 BackfillVerifiedUsers::class,
             ]);
+        }
+    }
+
+    private function mergeDbSettingsIntoConfig(): void
+    {
+        try {
+            $stored = app(SettingsRepository::class)->all();
+        } catch (\Throwable $e) {
+            return;
+        }
+
+        if ($stored === []) {
+            return;
+        }
+
+        $map = [
+            'captcha_enabled' => 'registration.captcha.enabled',
+            'captcha_provider' => 'registration.captcha.provider',
+            'captcha_site_key' => 'registration.captcha.site_key',
+            'captcha_recaptcha_min_score' => 'registration.captcha.recaptcha_min_score',
+        ];
+
+        foreach ($map as $dbKey => $configKey) {
+            if (array_key_exists($dbKey, $stored)) {
+                config([$configKey => $stored[$dbKey]]);
+            }
         }
     }
 }

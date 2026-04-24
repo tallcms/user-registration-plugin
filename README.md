@@ -10,6 +10,7 @@ Frontend user registration for TallCMS. Adds a themed `/register` page that crea
 
 - Themed registration form using your active theme's layout
 - **CAPTCHA support** — pluggable provider abstraction with **Cloudflare Turnstile** and **Google reCAPTCHA v3** built in (since 1.2.0)
+- **Filament settings UI** — super-admin-only page at `/app/registration-settings` for toggling CAPTCHA provider/keys without touching `.env` (since 1.3.0)
 - **Email verification** — opt-in `MustVerifyEmail` integration with a themed "check your email" page and resend support (since 1.2.0)
 - **First-site onboarding** — verified users with no sites are auto-redirected to the Multisite Template Gallery on entering the panel (since 1.2.0)
 - Honeypot spam protection
@@ -147,11 +148,60 @@ These are public routes loaded by TallCMS's plugin system. The plugin system aut
 The plugin ships with a small provider abstraction (`Tallcms\Registration\Captcha\Contracts\CaptchaProvider`) and two ready-made implementations:
 
 - **Cloudflare Turnstile** (default) — privacy-friendly, free, low UX friction. Get keys at https://dash.cloudflare.com/?to=/:account/turnstile.
-- **Google reCAPTCHA v3** — score-based and invisible. Configure `REGISTRATION_CAPTCHA_RECAPTCHA_MIN_SCORE` to tune the rejection threshold.
+- **Google reCAPTCHA v3** — score-based and invisible. Configure the minimum score to tune the rejection threshold.
 
-To enable CAPTCHA, set the site/secret keys via env. The widget script and form field are injected into the form view automatically; verification happens server-side via Laravel's `Http` client (no extra composer dependency). When keys aren't set or `REGISTRATION_CAPTCHA_ENABLED=false`, the plugin falls back to a no-op `NullCaptchaProvider`.
+The widget script and form field are injected into the form view automatically; verification happens server-side via Laravel's `Http` client (no extra composer dependency). When CAPTCHA is disabled or unkeyed, the plugin falls back to a no-op `NullCaptchaProvider`.
 
-To add a new provider (e.g. hCaptcha), implement `CaptchaProvider` and add a match arm in `CaptchaManager::resolve()`.
+### Filament settings UI (1.3.0+)
+
+Register the Filament plugin on your panel:
+
+```php
+use Tallcms\Registration\Filament\RegistrationPlugin;
+
+$panel->plugins([
+    // ...
+    RegistrationPlugin::make(),
+]);
+```
+
+Super admins (Spatie role `super_admin`) get a **Registration & CAPTCHA** page in the System nav group. From there:
+
+- Toggle CAPTCHA on/off
+- Pick the provider (Turnstile or reCAPTCHA v3)
+- Paste the **site key** (public, stored in DB)
+- Tune the reCAPTCHA min score
+- See whether the **secret key** is configured (the page never displays or accepts the secret — it stays in `.env`)
+- Hit **Test verification** to confirm the provider is reachable and your keys are valid
+
+### Hybrid storage model
+
+| Setting | Where it lives | Editable in UI? |
+|---------|----------------|-----------------|
+| `captcha_enabled` | DB (with env fallback) | ✓ |
+| `captcha_provider` | DB (with env fallback) | ✓ |
+| `captcha_site_key` | DB (with env fallback) | ✓ |
+| `captcha_recaptcha_min_score` | DB (with env fallback) | ✓ |
+| `captcha_secret_key` | `.env` only — **never DB** | ✗ (status only) |
+
+DB values take precedence over `config/registration.php`, which takes precedence over env defaults. Secret keys live in `.env` so a leaked DB dump never exposes them.
+
+### Adding a new provider
+
+To add e.g. hCaptcha, implement `CaptchaProvider`, add a `match` arm in `CaptchaManager::resolve()`, and extend the provider `Select` options in `RegistrationSettings::getFormSchema()`.
+
+### Env-only configuration (no UI)
+
+You can skip the Filament plugin and configure entirely via env:
+
+```env
+REGISTRATION_CAPTCHA_ENABLED=true
+REGISTRATION_CAPTCHA_PROVIDER=turnstile
+REGISTRATION_CAPTCHA_SITE_KEY=...
+REGISTRATION_CAPTCHA_SECRET_KEY=...
+```
+
+The DB merge layer is no-op when no settings rows exist, so env-only deploys work unchanged.
 
 ## Email Verification
 
