@@ -65,13 +65,23 @@ class RegistrationSettings extends Page implements HasForms
             'captcha_enabled' => (bool) ($repo->get('captcha_enabled') ?? config('registration.captcha.enabled') ?? false),
             'captcha_provider' => (string) ($repo->get('captcha_provider') ?? config('registration.captcha.provider', 'turnstile')),
             'captcha_site_key' => (string) ($repo->get('captcha_site_key') ?? config('registration.captcha.site_key', '')),
+            'captcha_secret_key' => '', // Never pre-fill; UI uses "leave blank = keep current" semantics
             'captcha_recaptcha_min_score' => (float) ($repo->get('captcha_recaptcha_min_score') ?? config('registration.captcha.recaptcha_min_score', 0.5)),
         ]);
     }
 
     protected function getFormSchema(): array
     {
-        $secretConfigured = (string) config('registration.captcha.secret_key', '') !== '';
+        $repo = app(SettingsRepository::class);
+        $secretInDb = $repo->hasSecret('captcha_secret_key');
+        $secretInEnv = (string) env('REGISTRATION_CAPTCHA_SECRET_KEY', '') !== '';
+        $secretConfigured = $secretInDb || $secretInEnv;
+
+        $secretHelper = match (true) {
+            $secretInDb => 'A secret is already saved (encrypted in the database). Leave this blank to keep it, or paste a new one to replace it.',
+            $secretInEnv => 'A secret is set in your server environment. Paste a value here to override it from the database, or leave blank to keep using the environment value.',
+            default => 'Paste the secret key from your CAPTCHA provider. It will be encrypted before being saved.',
+        };
 
         return [
             Section::make('CAPTCHA')
@@ -102,13 +112,21 @@ class RegistrationSettings extends Page implements HasForms
                         ->maxLength(255),
 
                     Placeholder::make('captcha_secret_status')
-                        ->label('Secret key')
+                        ->label('Secret key status')
                         ->content(fn () => new HtmlString(
                             $secretConfigured
-                                ? '<span class="text-success font-medium">✓ Configured via environment</span>'
-                                : '<span class="text-warning font-medium">✗ Not set — define <code>REGISTRATION_CAPTCHA_SECRET_KEY</code> in <code>.env</code></span>'
-                        ))
-                        ->helperText('Secret keys never live in the database. Set them via the .env file.'),
+                                ? '<span class="text-success font-medium">✓ Configured</span>'
+                                : '<span class="text-warning font-medium">✗ Not set — registration will fall back to no CAPTCHA</span>'
+                        )),
+
+                    TextInput::make('captcha_secret_key')
+                        ->label($secretConfigured ? 'Replace secret key' : 'Secret key')
+                        ->password()
+                        ->revealable()
+                        ->placeholder($secretConfigured ? '••••••••' : 'Paste your provider secret key')
+                        ->helperText($secretHelper)
+                        ->maxLength(500)
+                        ->dehydrated(fn (?string $state) => filled($state)),
 
                     TextInput::make('captcha_recaptcha_min_score')
                         ->label('Minimum score (reCAPTCHA v3 only)')
@@ -124,7 +142,27 @@ class RegistrationSettings extends Page implements HasForms
 
     protected function getHeaderActions(): array
     {
+        $repo = app(SettingsRepository::class);
+        $secretInDb = $repo->hasSecret('captcha_secret_key');
+
         return [
+            Action::make('clear_secret')
+                ->label('Clear saved secret')
+                ->icon('heroicon-o-trash')
+                ->color('danger')
+                ->visible(fn () => $secretInDb)
+                ->requiresConfirmation()
+                ->modalDescription('This deletes the encrypted secret from the database. CAPTCHA verification will fall back to the value in REGISTRATION_CAPTCHA_SECRET_KEY (if set), or disable itself if no env value exists.')
+                ->action(function () use ($repo) {
+                    $repo->forget('captcha_secret_key');
+
+                    Notification::make()
+                        ->title('Saved secret cleared')
+                        ->body('Now using the environment value (if any).')
+                        ->success()
+                        ->send();
+                }),
+
             Action::make('test')
                 ->label('Test verification')
                 ->color('gray')
@@ -172,11 +210,16 @@ class RegistrationSettings extends Page implements HasForms
     {
         $data = $this->form->getState();
 
-        app(SettingsRepository::class)->setMany([
+        $repo = app(SettingsRepository::class);
+
+        $repo->setMany([
             'captcha_enabled' => (bool) ($data['captcha_enabled'] ?? false),
             'captcha_provider' => $data['captcha_provider'] ?? 'turnstile',
             'captcha_site_key' => (string) ($data['captcha_site_key'] ?? ''),
             'captcha_recaptcha_min_score' => (float) ($data['captcha_recaptcha_min_score'] ?? 0.5),
+            // Empty / missing secret leaves the existing one untouched
+            // (handled inside SettingsRepository::setMany).
+            'captcha_secret_key' => $data['captcha_secret_key'] ?? null,
         ]);
 
         // Also nudge runtime config so the next request (and the test action
@@ -187,6 +230,11 @@ class RegistrationSettings extends Page implements HasForms
             'registration.captcha.site_key' => (string) ($data['captcha_site_key'] ?? ''),
             'registration.captcha.recaptcha_min_score' => (float) ($data['captcha_recaptcha_min_score'] ?? 0.5),
         ]);
+
+        // Pull the current effective secret (DB if just-saved, else env) into
+        // runtime config so the test action and immediate next request see it.
+        $effectiveSecret = (string) ($repo->get('captcha_secret_key') ?? env('REGISTRATION_CAPTCHA_SECRET_KEY', ''));
+        config(['registration.captcha.secret_key' => $effectiveSecret]);
 
         // Force CaptchaProvider singleton to be re-resolved on next request.
         app()->forgetInstance(\Tallcms\Registration\Captcha\Contracts\CaptchaProvider::class);

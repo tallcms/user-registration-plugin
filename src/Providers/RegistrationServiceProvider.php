@@ -106,6 +106,7 @@ class RegistrationServiceProvider extends ServiceProvider
             'captcha_enabled' => 'registration.captcha.enabled',
             'captcha_provider' => 'registration.captcha.provider',
             'captcha_site_key' => 'registration.captcha.site_key',
+            'captcha_secret_key' => 'registration.captcha.secret_key',
             'captcha_recaptcha_min_score' => 'registration.captcha.recaptcha_min_score',
         ];
 

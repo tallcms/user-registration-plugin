@@ -174,7 +174,7 @@ Super admins (Spatie role `super_admin`) get a **Registration & CAPTCHA** page i
 - See whether the **secret key** is configured (the page never displays or accepts the secret — it stays in `.env`)
 - Hit **Test verification** to confirm the provider is reachable and your keys are valid
 
-### Hybrid storage model
+### Storage model
 
 | Setting | Where it lives | Editable in UI? |
 |---------|----------------|-----------------|
@@ -182,9 +182,9 @@ Super admins (Spatie role `super_admin`) get a **Registration & CAPTCHA** page i
 | `captcha_provider` | DB (with env fallback) | ✓ |
 | `captcha_site_key` | DB (with env fallback) | ✓ |
 | `captcha_recaptcha_min_score` | DB (with env fallback) | ✓ |
-| `captcha_secret_key` | `.env` only — **never DB** | ✗ (status only) |
+| `captcha_secret_key` | DB (encrypted) (with env fallback) | ✓ |
 
-DB values take precedence over `config/registration.php`, which takes precedence over env defaults. Secret keys live in `.env` so a leaked DB dump never exposes them.
+DB values take precedence over `config/registration.php`, which takes precedence over env defaults. The secret key is encrypted at rest using your Laravel `APP_KEY` and never appears in the cache layer or in the form input pre-fill (the input is always blank; leaving it blank on save keeps the existing secret untouched). Use the **Clear saved secret** button in the page header to wipe the DB-stored secret and fall back to the env value (or to nothing).
 
 ### Adding a new provider
 

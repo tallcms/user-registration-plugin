@@ -3,19 +3,20 @@
 namespace Tallcms\Registration\Services;
 
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Schema;
 use Tallcms\Registration\Models\RegistrationSetting;
 
 /**
  * Wraps the tallcms_registration_settings key/value table.
  *
- * Stored values take precedence over config / env defaults. The secret
- * key is intentionally NOT writable here — it stays env-only and is
- * never persisted to the DB.
+ * Stored values take precedence over config / env defaults. Secret-class
+ * keys (see SECRET_KEYS) are encrypted at rest via Laravel's app key and
+ * decrypted only on read; the cache layer holds ciphertext, never plaintext.
  */
 class SettingsRepository
 {
-    private const CACHE_KEY = 'tallcms.registration.settings';
+    private const RAW_CACHE_KEY = 'tallcms.registration.settings.raw';
 
     private const CACHE_TTL = 3600;
 
@@ -24,18 +25,43 @@ class SettingsRepository
         'captcha_enabled',
         'captcha_provider',
         'captcha_site_key',
+        'captcha_secret_key',
         'captcha_recaptcha_min_score',
     ];
 
+    /** Keys treated as secrets — encrypted at rest, never displayed in UI. */
+    public const SECRET_KEYS = [
+        'captcha_secret_key',
+    ];
+
+    /**
+     * Return all stored settings with secrets decrypted to plaintext.
+     */
     public function all(): array
     {
-        if (! $this->tableExists()) {
-            return [];
+        $raw = $this->loadRaw();
+
+        foreach (self::SECRET_KEYS as $key) {
+            if (! array_key_exists($key, $raw)) {
+                continue;
+            }
+
+            $cipher = $raw[$key];
+
+            if (! is_string($cipher) || $cipher === '') {
+                unset($raw[$key]);
+
+                continue;
+            }
+
+            try {
+                $raw[$key] = Crypt::decryptString($cipher);
+            } catch (\Throwable $e) {
+                unset($raw[$key]);
+            }
         }
 
-        return Cache::remember(self::CACHE_KEY, self::CACHE_TTL, function () {
-            return RegistrationSetting::query()->pluck('value', 'key')->toArray();
-        });
+        return $raw;
     }
 
     public function get(string $key, mixed $default = null): mixed
@@ -43,6 +69,21 @@ class SettingsRepository
         $values = $this->all();
 
         return array_key_exists($key, $values) ? $values[$key] : $default;
+    }
+
+    /**
+     * Has a secret-class key been set in the DB? Used by the UI to render
+     * "configured ✓ / ✗" hints without exposing the secret itself.
+     */
+    public function hasSecret(string $key): bool
+    {
+        if (! in_array($key, self::SECRET_KEYS, true)) {
+            return false;
+        }
+
+        $raw = $this->loadRaw();
+
+        return isset($raw[$key]) && is_string($raw[$key]) && $raw[$key] !== '';
     }
 
     public function setMany(array $values): void
@@ -56,15 +97,48 @@ class SettingsRepository
                 continue;
             }
 
+            if (in_array($key, self::SECRET_KEYS, true)) {
+                // Empty / null = "keep the existing secret untouched". To
+                // explicitly clear a secret use forget($key) instead.
+                if ($value === null || $value === '') {
+                    continue;
+                }
+
+                $value = Crypt::encryptString((string) $value);
+            }
+
             RegistrationSetting::updateOrCreate(['key' => $key], ['value' => $value]);
         }
 
-        $this->forget();
+        $this->forgetCache();
     }
 
-    public function forget(): void
+    /** Delete a stored setting. Clears the cache. */
+    public function forget(string $key): void
     {
-        Cache::forget(self::CACHE_KEY);
+        if (! $this->tableExists()) {
+            return;
+        }
+
+        RegistrationSetting::where('key', $key)->delete();
+
+        $this->forgetCache();
+    }
+
+    public function forgetCache(): void
+    {
+        Cache::forget(self::RAW_CACHE_KEY);
+    }
+
+    private function loadRaw(): array
+    {
+        if (! $this->tableExists()) {
+            return [];
+        }
+
+        return Cache::remember(self::RAW_CACHE_KEY, self::CACHE_TTL, function () {
+            return RegistrationSetting::query()->pluck('value', 'key')->toArray();
+        });
     }
 
     private function tableExists(): bool
