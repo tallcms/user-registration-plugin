@@ -9,8 +9,11 @@ Frontend user registration for TallCMS. Adds a themed `/register` page that crea
 ## Features
 
 - Themed registration form using your active theme's layout
+- **CAPTCHA support** — pluggable provider abstraction with **Cloudflare Turnstile** and **Google reCAPTCHA v3** built in (since 1.2.0)
+- **Email verification** — opt-in `MustVerifyEmail` integration with a themed "check your email" page and resend support (since 1.2.0)
+- **First-site onboarding** — verified users with no sites are auto-redirected to the Multisite Template Gallery on entering the panel (since 1.2.0)
 - Honeypot spam protection
-- Rate limiting (5 registrations/minute per IP)
+- Layered rate limiting (30/min IP pre-CAPTCHA, 5/min post-validation, 1/min per-user resend)
 - Automatic role assignment (configurable)
 - Optional multisite integration (auto-assigns default site plan)
 
@@ -59,7 +62,24 @@ The plugin works out of the box with sensible defaults (no config file needed). 
 return [
     'enabled' => true,                 // Toggle registration on/off (404 when false)
     'default_role' => 'site_owner',    // Spatie role assigned to new users
-    'redirect_after' => null,          // null = auto-detect from Filament's default panel; set a string to force
+    'redirect_after' => null,          // null = auto-resolve (OnboardingResolver → Filament panel); set a string to force
+
+    'captcha' => [
+        'enabled' => null,             // null = auto: enabled iff site_key + secret_key are present; explicit true/false wins
+        'provider' => 'turnstile',     // 'turnstile' | 'recaptcha_v3'
+        'site_key' => '',
+        'secret_key' => '',
+        'recaptcha_min_score' => 0.5,  // reCAPTCHA v3 only; tokens below this score are rejected
+    ],
+
+    'email_verification' => [
+        'enabled' => false,            // Require email verification before panel access
+    ],
+
+    'onboarding' => [
+        'enabled' => true,             // Auto-redirect verified zero-site users to the Multisite Template Gallery
+        'redirect_url' => null,        // Override the default `/app/template-gallery` target if needed
+    ],
 ];
 ```
 
@@ -68,9 +88,26 @@ Or via environment:
 ```env
 REGISTRATION_DEFAULT_ROLE=site_owner
 REGISTRATION_REDIRECT_AFTER=/dashboard
+
+# Email verification
+REGISTRATION_EMAIL_VERIFICATION=true
+
+# CAPTCHA (Cloudflare Turnstile)
+REGISTRATION_CAPTCHA_ENABLED=true
+REGISTRATION_CAPTCHA_PROVIDER=turnstile
+REGISTRATION_CAPTCHA_SITE_KEY=
+REGISTRATION_CAPTCHA_SECRET_KEY=
+
+# CAPTCHA (Google reCAPTCHA v3 — alternative)
+# REGISTRATION_CAPTCHA_PROVIDER=recaptcha_v3
+# REGISTRATION_CAPTCHA_RECAPTCHA_MIN_SCORE=0.5
+
+# Onboarding
+REGISTRATION_ONBOARDING_ENABLED=true
+REGISTRATION_ONBOARDING_REDIRECT_URL=
 ```
 
-`redirect_after` defaults to the URL of Filament's default panel (so it works whether the panel is mounted at `/admin`, `/control`, or anything else). Set it explicitly only if you want to override that.
+`redirect_after` defaults to the OnboardingResolver result for authenticated users (Template Gallery for new zero-site users, panel default otherwise), then to Filament's default panel URL. Set it explicitly only if you need to override the auto-resolution.
 
 ### Available roles
 
@@ -92,29 +129,76 @@ If the configured role doesn't exist, registration will abort safely without cre
 |--------|------|-------------|
 | GET | `/register` | Registration form |
 | POST | `/register/submit` | Form submission |
-| GET | `/registered` | Success/welcome page |
+| POST | `/register/resend-verification` | Resend email verification (auth, 1/min/user) |
+| GET | `/registered` | Success/welcome page (or "check your email" when verification is pending) |
 
 These are public routes loaded by TallCMS's plugin system. The plugin system automatically applies `web` and `throttle:60,1` middleware.
 
 ## How It Works
 
 1. Visitor fills out the registration form at `/register`
-2. The plugin creates a user, assigns the configured role, and logs them in
-3. The visitor lands on a themed success page (`/registered`) with a "Go to Admin Panel" button
-4. They click through to `/admin` where Filament takes over
+2. Honeypot → pre-CAPTCHA throttle (30/min/IP) → CAPTCHA verification (if enabled) → validation → 5/min post-validation throttle
+3. The plugin creates a user, assigns the configured role, dispatches `Registered`, and logs them in
+4. **If email verification is on**, the user is redirected to `/registered` where a "check your email" page lets them resend the verification link. After clicking the link, Filament's verification controller activates the account and the panel-mounted `EnsureOnboardingRedirect` middleware steers them to the Template Gallery
+5. **If email verification is off**, the user is created with `email_verified_at = now()` (no email is sent) and redirected straight to the onboarding URL
+
+## CAPTCHA
+
+The plugin ships with a small provider abstraction (`Tallcms\Registration\Captcha\Contracts\CaptchaProvider`) and two ready-made implementations:
+
+- **Cloudflare Turnstile** (default) — privacy-friendly, free, low UX friction. Get keys at https://dash.cloudflare.com/?to=/:account/turnstile.
+- **Google reCAPTCHA v3** — score-based and invisible. Configure `REGISTRATION_CAPTCHA_RECAPTCHA_MIN_SCORE` to tune the rejection threshold.
+
+To enable CAPTCHA, set the site/secret keys via env. The widget script and form field are injected into the form view automatically; verification happens server-side via Laravel's `Http` client (no extra composer dependency). When keys aren't set or `REGISTRATION_CAPTCHA_ENABLED=false`, the plugin falls back to a no-op `NullCaptchaProvider`.
+
+To add a new provider (e.g. hCaptcha), implement `CaptchaProvider` and add a match arm in `CaptchaManager::resolve()`.
+
+## Email Verification
+
+When `REGISTRATION_EMAIL_VERIFICATION=true`:
+
+1. Your `User` model must implement `Illuminate\Contracts\Auth\MustVerifyEmail`.
+2. Your Filament panel provider should call `->emailVerification(isRequired: fn () => (bool) config('registration.email_verification.enabled'))` so the gate honours the same toggle.
+3. Add `Tallcms\Registration\Http\Middleware\EnsureOnboardingRedirect::class` to the panel's middleware chain — Filament's verification controller redirects to the panel root, and this middleware then auto-redirects new zero-site users to the Template Gallery.
+
+The plugin re-routes Laravel's stock `VerifyEmail` notification through Filament's URL generator (`Filament::getVerifyEmailUrl(...)`), so verification links land on the panel's verification controller instead of the non-existent `verification.verify` route.
+
+### Backfilling existing users
+
+Adding `MustVerifyEmail` to a User model with existing rows would lock those users out (their `email_verified_at` is NULL). Before flipping `REGISTRATION_EMAIL_VERIFICATION=true` in a non-fresh install, run:
+
+```bash
+php artisan tallcms:registration-backfill-verified
+```
+
+It marks every user with NULL `email_verified_at` as verified now. Idempotent. Use `--force` for non-interactive use (CI, deploy scripts).
+
+## Onboarding
+
+When the multisite plugin is installed, the plugin auto-redirects newly verified users with no sites to the Template Gallery so the first thing they do is pick a template. The redirect happens at the panel root (e.g. `/app`) via `EnsureOnboardingRedirect` middleware and stops as soon as the user has at least one site (`SitePlanService::siteCount($user) > 0`).
+
+Override the redirect target with `REGISTRATION_ONBOARDING_REDIRECT_URL=/somewhere`. Disable the off-ramp entirely with `REGISTRATION_ONBOARDING_ENABLED=false`.
+
+## Plugin development
+
+The canonical source for this plugin lives at `/Users/dan/Herd/tallcms-user-registration-plugin/`. When iterating in a host project (e.g. `push.sg`), edit there and rsync into the host's `plugins/tallcms/registration/` mirror — TallCMS does not ship a `plugin:update` command:
+
+```bash
+rsync -a --delete --exclude='.git' --exclude='*.zip' --exclude='.gitignore' \
+  /Users/dan/Herd/tallcms-user-registration-plugin/ \
+  /path/to/host/plugins/tallcms/registration/
+php artisan cache:clear && php artisan config:clear && php artisan view:clear
+```
 
 ## What This Plugin Does NOT Do
 
-This plugin handles **user creation only**. It does not manage email verification, panel permissions, MFA, or profile editing. Those are all handled by Filament and Laravel's built-in features, described below.
+This plugin handles **user creation, CAPTCHA, verification, and first-site onboarding**. It does not manage panel permissions, MFA, or profile editing. Those are all handled by Filament and Laravel's built-in features, described below.
 
 ## Filament Panel Access
 
-After registration, users access the admin panel at `/admin`. Whether they can get in depends on TallCMS's `User::canAccessPanel()` method, which checks two things:
+After registration, users land on whichever path your default Filament panel is mounted at (e.g. `/admin`, `/app`). Whether they can get in is decided by your panel's auth/verification middleware. With `->emailVerification(isRequired: fn () => …)` wired up, unverified users are bounced to the verification prompt; once verified, the plugin's middleware steers first-time users to the Template Gallery.
 
-1. **`is_active`** — the user must be active (the plugin sets this to `true` on creation)
-2. **Has at least one role** — the plugin assigns the configured role (default: `site_owner`)
-
-So out of the box, newly registered users can access the panel immediately.
+If your `User` model defines `canAccessPanel()`, that's the final gate. The plugin assigns the configured role (default `site_owner`) so role-based gates pass out of the box.
 
 ### What new users can do
 
@@ -130,41 +214,6 @@ All records are scoped to the user's own site(s) via `ChecksSiteOwnership` polic
 
 To give new users more or fewer permissions, either change `default_role` in the config or adjust the role's permissions via Filament Shield.
 
-### Deactivating users
-
-Set `is_active` to `false` on a user record to lock them out of the panel entirely, regardless of their roles. This can be done from the Users resource in the admin panel.
-
-## Email Verification
-
-This plugin **does not** include email verification. Users can log in immediately after registration.
-
-If you want to require email verification, this is handled entirely through Laravel and Filament — no changes to this plugin are needed:
-
-### 1. Implement `MustVerifyEmail` on your User model
-
-```php
-// app/Models/User.php
-use Illuminate\Contracts\Auth\MustVerifyEmail;
-
-class User extends Authenticatable implements FilamentUser, HasAppAuthentication, MustVerifyEmail
-{
-    // ...
-}
-```
-
-### 2. Enable email verification on the Filament panel
-
-```php
-// app/Providers/Filament/AdminPanelProvider.php
-return $panel
-    ->login()
-    ->passwordReset()
-    ->emailVerification()   // Add this line
-    // ...
-```
-
-With both of these in place, Laravel will send a verification email when the `Registered` event fires (which this plugin already dispatches), and Filament will block unverified users from the panel until they verify.
-
 ## Multi-Factor Authentication
 
 MFA is configured on the Filament panel, not in this plugin. TallCMS ships with TOTP app-based MFA enabled by default:
@@ -175,11 +224,11 @@ MFA is configured on the Filament panel, not in this plugin. TallCMS ships with 
 ])
 ```
 
-Users set up MFA from their profile page at `/admin/account` after their first login. No plugin configuration is needed.
+Users set up MFA from their account page after their first login (under your panel's path, e.g. `/admin/account` or `/app/account`). No plugin configuration is needed.
 
 ## Password Reset
 
-Password reset is handled by Filament's built-in flow at `/admin/forgot-password`. This plugin does not duplicate that functionality — the registration form links to `/admin/login` for users who already have accounts.
+Password reset is handled by Filament's built-in flow (`->passwordReset()` on the panel). This plugin does not duplicate that functionality — the registration form links to your panel's login URL for users who already have accounts.
 
 ## Multisite Integration
 

@@ -86,6 +86,10 @@
                     <input type="text" id="reg-website" name="_honeypot" tabindex="-1" autocomplete="off">
                 </div>
 
+                @if ($captcha->isEnabled())
+                    {!! $captcha->renderSnippet() !!}
+                @endif
+
                 <div class="form-control mt-6">
                     <button
                         type="submit"

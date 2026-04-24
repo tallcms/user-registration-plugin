@@ -12,11 +12,11 @@
 
             <h2 class="card-title text-2xl font-bold justify-center mb-2">Account Created</h2>
             <p class="text-base-content/70 mb-6">
-                Your account has been created. You can now access the admin panel to create and manage your site.
+                Welcome aboard. The next step is picking a template and spinning up your first site.
             </p>
 
             <a href="{{ $redirect_url }}" class="btn btn-primary w-full">
-                Go to Admin Panel
+                Set up your first site
             </a>
         </div>
     </div>

@@ -16,4 +16,7 @@ use Tallcms\Registration\Http\Controllers\RegisterController;
 
 Route::get('/register', [RegisterController::class, 'showForm'])->name('form');
 Route::post('/register/submit', [RegisterController::class, 'register'])->name('submit');
+Route::post('/register/resend-verification', [RegisterController::class, 'resendVerification'])
+    ->middleware('auth')
+    ->name('resend-verification');
 Route::get('/registered', [RegisterController::class, 'registered'])->name('success');
