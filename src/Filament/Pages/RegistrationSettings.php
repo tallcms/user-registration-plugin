@@ -74,12 +74,17 @@ class RegistrationSettings extends Page implements HasForms
     {
         $repo = app(SettingsRepository::class);
         $secretInDb = $repo->hasSecret('captcha_secret_key');
-        $secretInEnv = (string) env('REGISTRATION_CAPTCHA_SECRET_KEY', '') !== '';
-        $secretConfigured = $secretInDb || $secretInEnv;
+        // Read from config, never env() — config() works under config:cache,
+        // env() returns null in cached production deploys.
+        $secretInConfig = (string) config('registration.captcha.secret_key', '') !== '';
+        // "Outside the DB" means it came from config defaults (env-bootstrapped
+        // in register()) and isn't currently overridden by a DB row.
+        $secretFromOutsideDb = $secretInConfig && ! $secretInDb;
+        $secretConfigured = $secretInDb || $secretInConfig;
 
         $secretHelper = match (true) {
             $secretInDb => 'A secret is already saved (encrypted in the database). Leave this blank to keep it, or paste a new one to replace it.',
-            $secretInEnv => 'A secret is set in your server environment. Paste a value here to override it from the database, or leave blank to keep using the environment value.',
+            $secretFromOutsideDb => 'A secret is set in your server environment. Paste a value here to override it from the database, or leave blank to keep using the environment value.',
             default => 'Paste the secret key from your CAPTCHA provider. It will be encrypted before being saved.',
         };
 
@@ -231,10 +236,17 @@ class RegistrationSettings extends Page implements HasForms
             'registration.captcha.recaptcha_min_score' => (float) ($data['captcha_recaptcha_min_score'] ?? 0.5),
         ]);
 
-        // Pull the current effective secret (DB if just-saved, else env) into
-        // runtime config so the test action and immediate next request see it.
-        $effectiveSecret = (string) ($repo->get('captcha_secret_key') ?? env('REGISTRATION_CAPTCHA_SECRET_KEY', ''));
-        config(['registration.captcha.secret_key' => $effectiveSecret]);
+        // Pull the current effective secret (DB if just-saved, else whatever
+        // config already had — bootstrapped from env in register()) into
+        // runtime config so the test action sees it. config() not env(); env
+        // is unreliable under php artisan config:cache.
+        $dbSecret = $repo->get('captcha_secret_key');
+
+        if (filled($dbSecret)) {
+            config(['registration.captcha.secret_key' => $dbSecret]);
+        }
+        // Otherwise leave config alone — register()/the boot merger already
+        // populated it from env defaults.
 
         // Force CaptchaProvider singleton to be re-resolved on next request.
         app()->forgetInstance(\Tallcms\Registration\Captcha\Contracts\CaptchaProvider::class);
