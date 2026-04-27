@@ -2,7 +2,7 @@
     "name": "Registration",
     "slug": "registration",
     "vendor": "tallcms",
-    "version": "2.0.1",
+    "version": "2.0.0",
     "description": "TallCMS bridge for the Filament-native registration plugin (tallcms/filament-registration). Adds onboarding flow + default site-plan assignment on top.",
     "author": "TallCMS",
     "namespace": "Tallcms\\Registration",
