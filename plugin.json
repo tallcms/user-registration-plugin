@@ -2,18 +2,21 @@
     "name": "Registration",
     "slug": "registration",
     "vendor": "tallcms",
-    "version": "1.3.2",
-    "description": "Frontend user registration for TallCMS",
+    "version": "2.0.0",
+    "description": "TallCMS bridge for the Filament-native registration plugin (tallcms/filament-registration). Adds onboarding flow + default site-plan assignment on top.",
     "author": "TallCMS",
     "namespace": "Tallcms\\Registration",
     "provider": "Tallcms\\Registration\\Providers\\RegistrationServiceProvider",
     "filament_plugin": "Tallcms\\Registration\\Filament\\RegistrationPlugin",
-    "public_routes": ["/register", "/register/submit", "/register/resend-verification", "/registered"],
+    "public_routes": ["/register"],
     "tags": ["auth", "registration", "free"],
     "license_required": false,
     "license": "MIT",
     "compatibility": {
         "php": "^8.2",
-        "tallcms": "^4.0"
+        "tallcms": "^4.3.2"
+    },
+    "requires_packages": {
+        "tallcms/filament-registration": "^1.0"
     }
 }

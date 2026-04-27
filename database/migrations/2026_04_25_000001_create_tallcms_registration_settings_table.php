@@ -1,31 +1,33 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 
+/**
+ * No-op migration (kept under its original filename so existing installs
+ * don't try to re-run it).
+ *
+ * History: this migration originally created the
+ * `tallcms_registration_settings` table for v1.x of this plugin. In v2.0.0
+ * the table moved to the generic `tallcms/filament-registration` package,
+ * which ships its own idempotent migration that creates the same table when
+ * absent and skips it when present.
+ *
+ * Behaviour:
+ *   - Fresh installs of v2.0.0: the generic plugin's migration creates the
+ *     table; this migration runs as a no-op.
+ *   - Upgraded installs from v1.x: the table already exists from this
+ *     migration's prior run; both this no-op and the generic plugin's
+ *     idempotent migration leave it untouched.
+ */
 return new class extends Migration
 {
     public function up(): void
     {
-        // Idempotent — TallCMS's plugin:install runs this migration via its
-        // own plugin_migrations tracker, while Laravel's standard `migrate`
-        // also discovers it through loadMigrationsFrom. Without this guard,
-        // the second runner blows up on a duplicate-table error.
-        if (Schema::hasTable('tallcms_registration_settings')) {
-            return;
-        }
-
-        Schema::create('tallcms_registration_settings', function (Blueprint $table) {
-            $table->id();
-            $table->string('key')->unique();
-            $table->json('value')->nullable();
-            $table->timestamps();
-        });
+        // intentionally empty — see class doc above
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('tallcms_registration_settings');
+        // intentionally empty
     }
 };
