@@ -58,7 +58,21 @@ REGISTRATION_ONBOARDING_REDIRECT_URL=      # override gallery URL if needed
 REGISTRATION_EMAIL_VERIFICATION=false      # see "Email verification" below
 ```
 
-Captcha config has moved to the upstream plugin — manage it via **Admin → Settings → Registration**, or set `FILAMENT_REGISTRATION_CAPTCHA_*` env vars (see the upstream README).
+### Captcha env vars
+
+Captcha config has moved to the upstream plugin. The canonical env names are now `FILAMENT_REGISTRATION_CAPTCHA_*`:
+
+```env
+FILAMENT_REGISTRATION_CAPTCHA_ENABLED=true
+FILAMENT_REGISTRATION_CAPTCHA_PROVIDER=turnstile
+FILAMENT_REGISTRATION_CAPTCHA_SITE_KEY=...
+FILAMENT_REGISTRATION_CAPTCHA_SECRET_KEY=...
+FILAMENT_REGISTRATION_CAPTCHA_RECAPTCHA_MIN_SCORE=0.5
+```
+
+Or manage everything except the secret via **Admin → Settings → Registration** (the secret is encrypted in the DB if set there).
+
+**Backward-compat**: v1.x deploys with `REGISTRATION_CAPTCHA_*` env vars keep working in v2.0.1+. The bridge plugin forwards old names to new ones at register time, only when the new-style env is unset — so an explicit `FILAMENT_REGISTRATION_CAPTCHA_*` always wins. Renaming is encouraged but not required.
 
 ## Email verification
 
@@ -85,7 +99,8 @@ This is a **breaking** version. Concrete changes if you're upgrading from 1.3.x:
 | Email verification flow | Custom `/registered` and `/awaiting-verification` views | Filament's native `->emailVerification()` |
 | Honeypot bot rejection | Silent fake-success page | Validation error on the form |
 | Post-validation throttle | Custom 5/min throttle | Filament's built-in (2/min global, 2/min per email) |
-| `Manage:CodeInjection`-style permission | None for registration | New `View:RegistrationSettings` Shield permission for the upstream settings page |
+| Captcha env var prefix | `REGISTRATION_CAPTCHA_*` | `FILAMENT_REGISTRATION_CAPTCHA_*` (canonical). Old names still forwarded automatically by the bridge in v2.0.1+. |
+| Settings page authorization | Hardcoded super_admin check | Open to any panel user by default; subclass to gate via Shield / `canAccess()` / panel middleware (upstream README has examples) |
 
 Settings DB rows in `tallcms_registration_settings` are preserved — the upstream plugin reads from the same table. No data migration needed.
 
