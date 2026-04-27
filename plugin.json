@@ -3,7 +3,7 @@
     "slug": "registration",
     "vendor": "tallcms",
     "version": "2.0.0",
-    "description": "TallCMS bridge for the Filament-native registration plugin (tallcms/filament-registration). Adds onboarding flow + default site-plan assignment on top.",
+    "description": "TallCMS Multisite bridge for tallcms/filament-registration. Adds the SaaS signup flow on top: default role site_owner, onboarding redirect to Template Gallery, default site-plan assignment. Most useful when the Multisite plugin is also installed.",
     "author": "TallCMS",
     "namespace": "Tallcms\\Registration",
     "provider": "Tallcms\\Registration\\Providers\\RegistrationServiceProvider",

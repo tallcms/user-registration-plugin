@@ -1,18 +1,35 @@
-# TallCMS Registration Bridge
+# TallCMS Registration Bridge (Multisite-flavoured)
 
-Wires the generic [`tallcms/filament-registration`](https://github.com/tallcms/filament-registration) plugin into TallCMS with the SaaS defaults this app expects: default role `site_owner`, post-register onboarding flow into the Multisite Template Gallery, default site-plan assignment.
+Wires the generic [`tallcms/filament-registration`](https://github.com/tallcms/filament-registration) plugin into TallCMS with the **SaaS / Multisite** defaults this app expects: default role `site_owner`, post-register onboarding into the Multisite Template Gallery, default site-plan assignment.
+
+> ⚠️ **This bridge is most useful with the [TallCMS Multisite plugin](https://github.com/tallcms/multisite-plugin) installed.** Without Multisite, the bridge's onboarding-redirect and site-plan-assignment features both silently no-op (they check for `Tallcms\Multisite\Services\SitePlanService` at runtime). Vanilla TallCMS installs that don't use Multisite are better off skipping this bridge and using `tallcms/filament-registration` directly with whatever `defaultRole(...)` they want — the upstream plugin's README has the recipe.
 
 > **v2.0.0 is a major-version refactor.** The previous standalone `/register` controller and Blade form were retired in favour of Filament's native registration page. The captcha pipeline and admin settings UI moved into the upstream `tallcms/filament-registration` package, which this plugin now depends on. See the [migration notes](#migration-from-1x) before upgrading.
 
 ## What this plugin does (in v2.0.0)
 
 - Registers the [generic plugin](https://github.com/tallcms/filament-registration) on your Filament panel with `defaultRole('site_owner')`.
-- Binds Filament's `RegistrationResponse` contract to an onboarding-aware response — newly registered users with no sites are redirected to the Multisite Template Gallery instead of the panel home.
-- Assigns the default site plan to new users via the `Tallcms\Multisite\Services\SitePlanService` (only when the multisite plugin is installed; no-op otherwise).
-- Mounts `EnsureOnboardingRedirect` middleware on the panel so verified users with no sites keep getting nudged to the gallery on subsequent visits.
 - 301-redirects the legacy `/register` URL to the panel's register URL so existing bookmarks keep working.
+- **(Requires Multisite plugin)** Binds Filament's `RegistrationResponse` contract to an onboarding-aware response — newly registered users with no sites are redirected to the Multisite Template Gallery instead of the panel home.
+- **(Requires Multisite plugin)** Assigns the default site plan to new users via `Tallcms\Multisite\Services\SitePlanService`.
+- **(Requires Multisite plugin)** Mounts `EnsureOnboardingRedirect` middleware on the panel so verified users with no sites keep getting nudged to the gallery on subsequent visits.
 
 Everything else — captcha (Turnstile / reCAPTCHA v3), admin settings UI, the actual register page form — is provided by the upstream generic plugin.
+
+### Without the Multisite plugin?
+
+The three Multisite-coupled features above silently no-op. The bridge's contribution shrinks to just `defaultRole('site_owner')` + the legacy URL redirect — which you can do directly in your panel provider without the bridge:
+
+```php
+$panel
+    ->registration(\Tallcms\FilamentRegistration\Filament\Pages\Register::class)
+    ->plugin(
+        \Tallcms\FilamentRegistration\Filament\FilamentRegistrationPlugin::make()
+            ->defaultRole('site_owner')
+    );
+```
+
+If you're not running Multisite, skip this bridge and use the [generic plugin](https://github.com/tallcms/filament-registration) directly — fewer moving parts, same outcome for vanilla TallCMS.
 
 ## Prerequisites
 
